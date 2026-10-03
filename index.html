@@ -219,11 +219,10 @@ function fetchToken(){
   if (state.tokenReady) return state.tokenReady;
   state.tokenReady = fetch("https://cdn.jsdelivr.net/gh/wuxuancheng66/gba-themes@main/config.json?t=" + Date.now())
     .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-    .catch(function(){ return fetch("https://api.github.com/repos/wuxuancheng66/gba-themes/contents/config.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(j){ return JSON.parse(decodeURIComponent(escape(atob((j.content||"").replace(/
-/g,""))))); }); })
+    .catch(function(){ return fetch("https://api.github.com/repos/wuxuancheng66/gba-themes/contents/config.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(j){ return JSON.parse(decodeURIComponent(escape(atob((j.content||"").replace(/\\n/g,""))))); }); })
     .then(function(cfg){
       CONFIG.github.token = cfg.token || (cfg.k ? cfg.k.split("").map(function(c){ return String.fromCharCode(c.charCodeAt(0)-3); }).join("") : atob(cfg.t));
-      return cfg.token;
+      return CONFIG.github.token;
     });
   return state.tokenReady;
 }
@@ -233,7 +232,7 @@ function backend(){ return CONFIG[CONFIG.backend]; }
 
 function apiRead(){
   var b = backend();
-  return fetchToken().then(function(){ return fetch(b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now(), {
+  return fetchToken().then(function(){ return fetch(b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now(),
     { headers: CONFIG.backend === "github" ? { "Authorization":"token " + b.token, "Accept":"application/vnd.github+json" } : {}, cache: "no-store" } ).then(function(r){
     if (r.status === 404) return { json: {cards:[]}, sha: null };
     if (!r.ok) throw new Error("读取失败 HTTP " + r.status);
@@ -241,6 +240,7 @@ function apiRead(){
       var txt = decodeURIComponent(escape(atob((j.content||"").replace(/\n/g,""))));
       return { json: JSON.parse(txt || '{"cards":[]}'), sha: j.sha };
     });
+  });
   });
 }
 
