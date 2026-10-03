@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>主题构想收集器 · 筑工杯备赛</title>
+<meta name="description" content="粤港澳大学生公共治理数据分析大赛·五人主题构想实时收集板">
+<style>
+  :root{
+    --bg:#080d1f; --bg2:#0e1533;
+    --card:rgba(255,255,255,.05); --border:rgba(255,255,255,.1);
+    --text:#eef1fb; --muted:#9aa5c6;
+    --blue:#4f8cff; --violet:#8b5cf6; --cyan:#22d3ee; --gold:#f5b93d; --green:#34d399; --pink:#f472b6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:
+      radial-gradient(800px 400px at 85% -5%, rgba(79,140,255,.18), transparent 60%),
+      radial-gradient(700px 400px at -10% 25%, rgba(139,92,246,.14), transparent 60%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+    color:var(--text); line-height:1.65; min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+    padding-bottom:110px;
+  }
+  /* ===== 顶栏 ===== */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(8,13,31,.85); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border); padding:12px 16px 10px;
+  }
+  .top-row{display:flex;align-items:center;gap:10px}
+  .logo{font-size:16.5px;font-weight:800;letter-spacing:.5px;flex:1;min-width:0}
+  .logo .grad{background:linear-gradient(90deg,#7db4ff,var(--cyan),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .logo small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:1px}
+  .sync-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex:none}
+  .sync-dot.off{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+  .sync-dot.err{background:#f87171;box-shadow:0 0 8px #f87171}
+  .btn-refresh{
+    flex:none;border:1px solid var(--border);background:rgba(255,255,255,.06);color:var(--text);
+    font-size:12.5px;padding:6px 12px;border-radius:10px;cursor:pointer;
+  }
+  .btn-refresh:active{transform:scale(.95)}
+  /* 身份条 */
+  .people{display:flex;gap:8px;margin-top:11px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .people::-webkit-scrollbar{display:none}
+  .person{
+    flex:none;display:flex;align-items:center;gap:7px;padding:6px 12px 6px 7px;border-radius:999px;
+    border:1px solid var(--border);background:rgba(255,255,255,.04);cursor:pointer;transition:.15s;
+  }
+  .person .av{
+    width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+    font-size:12px;font-weight:700;color:#fff;
+  }
+  .person .nm{font-size:13px;color:var(--muted);white-space:nowrap}
+  .person .ct{font-size:11px;background:rgba(255,255,255,.1);padding:1px 7px;border-radius:999px;color:var(--muted)}
+  .person.sel{border-color:rgba(79,140,255,.6);background:rgba(79,140,255,.13)}
+  .person.sel .nm{color:#fff;font-weight:700}
+  /* ===== 卡片 ===== */
+  main{max-width:860px;margin:0 auto;padding:14px 14px 0}
+  .empty{
+    text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;
+    border:1px dashed var(--border);border-radius:18px;margin-top:10px;background:rgba(255,255,255,.02);
+  }
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;padding:15px 16px 13px;
+    position:relative;overflow:hidden;transition:.15s;
+  }
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc,#4f8cff)}
+  .card .head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;padding-left:4px}
+  .card h3{font-size:15.5px;flex:1;line-height:1.45;word-break:break-all}
+  .card .meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin:2px 0 9px 4px;flex-wrap:wrap}
+  .card .who{color:var(--pc,#4f8cff);font-weight:700}
+  .fields{display:none;padding-left:4px}
+  .card.open .fields{display:block}
+  .f{margin-bottom:8px}
+  .f .k{font-size:11px;color:var(--cyan);letter-spacing:1px;margin-bottom:2px;font-weight:700}
+  .f .v{font-size:13.5px;color:#d5ddf3;white-space:pre-wrap;word-break:break-word}
+  .f .v.short{cursor:pointer}
+  .toggle{
+    font-size:12px;color:var(--blue);cursor:pointer;padding:4px 0 0 4px;user-select:none;
+  }
+  .ops{display:flex;gap:8px;margin-top:9px;padding-left:4px}
+  .ops button{
+    border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--muted);
+    font-size:12px;padding:4px 12px;border-radius:8px;cursor:pointer;
+  }
+  .ops button.del{color:#f8a5a5;border-color:rgba(248,113,113,.3)}
+  .ops button:active{transform:scale(.94)}
+  /* ===== 底部操作条 ===== */
+  .bottombar{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;
+    background:rgba(8,13,31,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-top:1px solid var(--border);padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    display:flex;gap:10px;
+  }
+  .bottombar button{
+    flex:1;border:none;border-radius:13px;padding:13px 0;font-size:15px;font-weight:700;cursor:pointer;
+  }
+  .btn-new{background:linear-gradient(92deg,var(--blue),var(--violet));color:#fff;box-shadow:0 6px 18px rgba(79,140,255,.35)}
+  .btn-export{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border)}
+  .bottombar button:active{transform:scale(.97)}
+  /* ===== 表单 ===== */
+  .modal{
+    position:fixed;inset:0;z-index:100;background:rgba(4,7,17,.75);backdrop-filter:blur(6px);
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  .modal.show{display:flex}
+  .sheet{
+    width:100%;max-width:720px;max-height:92vh;overflow-y:auto;
+    background:linear-gradient(180deg,#131b3f,#0d1330);
+    border-radius:22px 22px 0 0;border:1px solid var(--border);border-bottom:none;
+    padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+  }
+  @media (min-width:720px){.modal{align-items:center}.sheet{border-radius:22px;border-bottom:1px solid var(--border)}}
+  .sheet h3{font-size:17px;margin-bottom:4px}
+  .sheet .sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .fg{margin-bottom:13px}
+  .fg label{display:block;font-size:12.5px;font-weight:700;color:#cdd8f5;margin-bottom:5px}
+  .fg label small{color:var(--muted);font-weight:400}
+  .fg textarea,.fg input{
+    width:100%;background:rgba(255,255,255,.055);border:1px solid var(--border);border-radius:12px;
+    color:var(--text);font-size:14.5px;padding:11px 13px;font-family:inherit;outline:none;resize:vertical;
+  }
+  .fg textarea:focus,.fg input:focus{border-color:rgba(79,140,255,.6)}
+  .fg textarea{min-height:74px}
+  .sheet-actions{display:flex;gap:10px;margin-top:6px}
+  .sheet-actions button{flex:1;border:none;border-radius:13px;padding:13px 0;font-size:15px;font-weight:700;cursor:pointer}
+  .sa-save{background:linear-gradient(92deg,var(--blue),var(--violet));color:#fff}
+  .sa-cancel{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border)}
+  /* toast */
+  .toast{
+    position:fixed;left:50%;bottom:120px;transform:translateX(-50%) translateY(20px);z-index:200;
+    background:rgba(20,28,60,.95);border:1px solid var(--border);color:#fff;font-size:13.5px;
+    padding:10px 20px;border-radius:999px;opacity:0;transition:.3s;pointer-events:none;max-width:86vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:rgba(52,211,153,.5)}
+  .toast.err{border-color:rgba(248,113,113,.5)}
+  /* 导出预览 */
+  .export-box{width:100%;height:56vh;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;color:#d5ddf3;font-size:12.5px;padding:12px;font-family:inherit;outline:none;white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top-row">
+    <div class="logo">
+      <span class="grad">📊 主题构想收集器</span>
+      <small>筑工杯第六届 · 五人共创 · 自动同步</small>
+    </div>
+    <span class="sync-dot" id="syncDot" title="同步状态"></span>
+    <button class="btn-refresh" onclick="loadData(true)">刷新</button>
+  </div>
+  <div class="people" id="peopleBar"></div>
+</header>
+
+<main>
+  <div class="grid" id="cardsGrid"></div>
+  <div class="empty" id="emptyTip" style="display:none">
+    还没有任何构想——点击下方「+ 新的构想」<br>写下第一个主题灵感 ✍️
+  </div>
+</main>
+
+<div class="bottombar">
+  <button class="btn-new" onclick="openForm()">＋ 新的构想</button>
+  <button class="btn-export" onclick="openExport()">📤 导出汇总</button>
+</div>
+
+<!-- 编辑表单 -->
+<div class="modal" id="formModal">
+  <div class="sheet">
+    <h3 id="formTitle">新的主题构想</h3>
+    <div class="sub" id="formSub"></div>
+    <div class="fg"><label>主题名 <small>· 必填</small></label><input id="f-title" placeholder="例如：AI 客服替代政务热线的服务效能研究" maxlength="60"></div>
+    <div class="fg"><label>社会现象</label><textarea id="f-phen" placeholder="你观察到的真实现象、数据、新闻或身边案例……"></textarea></div>
+    <div class="fg"><label>研究前提</label><textarea id="f-premise" placeholder="该现象成立的前提条件、已有研究或政策背景……"></textarea></div>
+    <div class="fg"><label>研究思路</label><textarea id="f-method" placeholder="打算怎么做：数据来源、分析方法（文本分析/机器学习/空间分析等）……"></textarea></div>
+    <div class="fg"><label>研究案例</label><textarea id="f-case" placeholder="可以对标的城市、政策、平台或典型事件……"></textarea></div>
+    <div class="fg"><label>要解决的治理问题</label><textarea id="f-gov" placeholder="这个研究回应什么公共治理痛点？政策建议指向哪里？"></textarea></div>
+    <div class="sheet-actions">
+      <button class="sa-cancel" onclick="closeForm()">取消</button>
+      <button class="sa-save" id="saveBtn" onclick="saveCard()">保存到云端</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导出 -->
+<div class="modal" id="exportModal">
+  <div class="sheet">
+    <h3>📤 全部构想汇总</h3>
+    <div class="sub">点击「复制全文」粘贴到群聊或文档 · <span id="exportCount"></span></div>
+    <textarea class="export-box" id="exportBox" readonly></textarea>
+    <div class="sheet-actions" style="margin-top:12px">
+      <button class="sa-cancel" onclick="closeExport()">关闭</button>
+      <button class="sa-save" onclick="copyExport()">复制全文</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 配置 ================= */
+var CONFIG = {
+  backend: "github",              // "github" 或 "gitee"
+  github: { owner:"wuxuancheng66", repo:"gba-themes",  branch:"main",  token:"__TOKEN__", api:"https://api.github.com" },
+  gitee:  { owner:"wuxuancheng66", repo:"gba-themes",  branch:"master", token:"",          api:"https://gitee.com/api/v5" }
+};
+var PEOPLE = ["吴宣澄","马云启","王子恒","朱鑫林","庄竞泽"];
+var COLORS = {"吴宣澄":"#4f8cff","马云启":"#34d399","王子恒":"#f5b93d","朱鑫林":"#f472b6","庄竞泽":"#8b5cf6"};
+
+var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null };
+
+/* ================= 后端适配 ================= */
+function backend(){ return CONFIG[CONFIG.backend]; }
+
+function apiRead(){
+  var b = backend();
+  return fetch(b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now(), {
+    headers: CONFIG.backend === "github" ? { "Authorization":"token " + b.token, "Accept":"application/vnd.github+json" } : {},
+    cache: "no-store"
+  }).then(function(r){
+    if (r.status === 404) return { json: {cards:[]}, sha: null };
+    if (!r.ok) throw new Error("读取失败 HTTP " + r.status);
+    return r.json().then(function(j){
+      var txt = decodeURIComponent(escape(atob((j.content||"").replace(/\n/g,""))));
+      return { json: JSON.parse(txt || '{"cards":[]}'), sha: j.sha };
+    });
+  });
+}
+
+function apiWrite(cards, sha){
+  var b = backend();
+  var content = btoa(unescape(encodeURIComponent(JSON.stringify({cards:cards}, null, 1))));
+  var body = { message: "更新主题构想 " + new Date().toLocaleString("zh-CN"), content: content, branch: b.branch };
+  var url = b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json";
+  var opts;
+  if (CONFIG.backend === "github") {
+    if (sha) body.sha = sha;
+    opts = { method:"PUT", headers:{ "Authorization":"token " + b.token, "Accept":"application/vnd.github+json", "Content-Type":"application/json" }, body: JSON.stringify(body) };
+  } else {
+    body.access_token = b.token; if (sha) body.sha = sha;
+    opts = { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) };
+  }
+  return fetch(url, opts).then(function(r){ if (!r.ok) throw new Error("保存失败 HTTP " + r.status); return r.json(); });
+}
+
+/* ================= 数据加载与合并 ================= */
+function setDot(cls){
+  var d = document.getElementById("syncDot");
+  d.className = "sync-dot" + (cls ? " " + cls : "");
+}
+
+function loadData(showToast){
+  setDot("off");
+  return apiRead().then(function(res){
+    state.cards = (res.json.cards || []).sort(function(a,b){ return (b.updateAt||"").localeCompare(a.updateAt||""); });
+    state.sha = res.sha;
+    setDot("");
+    render();
+    if (showToast) toast("已同步 · 共 " + state.cards.length + " 条", "ok");
+  }).catch(function(e){
+    setDot("err");
+    if (showToast) toast("⚠️ " + e.message, "err");
+  });
+}
+
+function saveCard(){
+  var title = document.getElementById("f-title").value.trim();
+  if (!title) { toast("主题名必填", "err"); return; }
+  var me = state.me || "吴宣澄";
+  var now = new Date().toISOString();
+  var card = {
+    id: state.editingId || (Date.now().toString(36) + Math.random().toString(36).slice(2,6)),
+    title: title,
+    phen:   document.getElementById("f-phen").value.trim(),
+    premise:document.getElementById("f-premise").value.trim(),
+    method: document.getElementById("f-method").value.trim(),
+    case_:  document.getElementById("f-case").value.trim(),
+    gov:    document.getElementById("f-gov").value.trim(),
+    author: state.editingId ? findCard(state.editingId).author : me,
+    lastEditor: me,
+    createAt: state.editingId ? findCard(state.editingId).createAt : now,
+    updateAt: now
+  };
+  var btn = document.getElementById("saveBtn");
+  btn.disabled = true; btn.textContent = "保存中…";
+
+  apiRead().then(function(res){
+    var remote = (res.json.cards || []);
+    var merged = remote.filter(function(c){ return c.id !== card.id; });
+    merged.push(card);
+    return apiWrite(merged, res.sha);
+  }).then(function(){
+    closeForm();
+    toast("✅ 已保存，其他人 10 秒内可见", "ok");
+    return loadData();
+  }).catch(function(e){
+    toast("⚠️ " + e.message + "（可稍后重试）", "err");
+  }).finally(function(){
+    btn.disabled = false; btn.textContent = "保存到云端";
+  });
+}
+
+function delCard(id){
+  var c = findCard(id);
+  if (!confirm("删除「" + c.title + "」？此操作不可恢复")) return;
+  apiRead().then(function(res){
+    var merged = (res.json.cards || []).filter(function(x){ return x.id !== id; });
+    return apiWrite(merged, res.sha);
+  }).then(function(){ toast("已删除", "ok"); return loadData(); })
+    .catch(function(e){ toast("⚠️ " + e.message, "err"); });
+}
+
+function findCard(id){
+  for (var i=0;i<state.cards.length;i++) if (state.cards[i].id===id) return state.cards[i];
+  return {};
+}
+
+/* ================= 渲染 ================= */
+function renderPeople(){
+  var bar = document.getElementById("peopleBar");
+  bar.innerHTML = "";
+  PEOPLE.forEach(function(p){
+    var n = state.cards.filter(function(c){ return c.author === p; }).length;
+    var el = document.createElement("div");
+    el.className = "person" + (state.me === p ? " sel" : "");
+    el.innerHTML = '<div class="av" style="background:' + COLORS[p] + '">' + p[1] + '</div><div class="nm">' + p + '</div><div class="ct">' + n + '</div>';
+    el.onclick = function(){
+      state.me = p; localStorage.setItem("me", p); renderPeople(); toast("当前身份：" + p, "ok");
+    };
+    bar.appendChild(el);
+  });
+}
+
+var FIELD_LABELS = [["phen","社会现象"],["premise","研究前提"],["method","研究思路"],["case_","研究案例"],["gov","要解决的治理问题"]];
+
+function esc(s){ var d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+
+function render(){
+  renderPeople();
+  var grid = document.getElementById("cardsGrid");
+  grid.innerHTML = "";
+  document.getElementById("emptyTip").style.display = state.cards.length ? "none" : "block";
+  state.cards.forEach(function(c){
+    var el = document.createElement("div");
+    el.className = "card"; el.style.setProperty("--pc", COLORS[c.author] || "#4f8cff");
+    var fieldsHtml = FIELD_LABELS.map(function(f){
+      if (!c[f[0]]) return "";
+      return '<div class="f"><div class="k">' + f[1] + '</div><div class="v">' + esc(c[f[0]]) + '</div></div>';
+    }).join("");
+    var hasMore = fieldsHtml !== "";
+    el.innerHTML =
+      '<div class="head"><h3>' + esc(c.title) + '</h3></div>' +
+      '<div class="meta"><span class="who">' + esc(c.author) + '</span><span>·</span><span>' + fmtTime(c.updateAt) + '更新' +
+      (c.lastEditor && c.lastEditor !== c.author ? '（' + esc(c.lastEditor) + '改）' : '') + '</span></div>' +
+      '<div class="fields">' + fieldsHtml + '</div>' +
+      (hasMore ? '<div class="toggle" onclick="this.parentNode.classList.toggle(\'open\')">展开 / 收起 ▾</div>' : '') +
+      '<div class="ops"><button onclick="editCard(\'' + c.id + '\')">✏️ 编辑</button><button class="del" onclick="delCard(\'' + c.id + '\')">🗑 删除</button></div>';
+    grid.appendChild(el);
+  });
+}
+
+function fmtTime(iso){
+  if (!iso) return "";
+  var d = new Date(iso);
+  return (d.getMonth()+1) + "月" + d.getDate() + "日 " + String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+
+/* ================= 表单 ================= */
+function openForm(id){
+  state.editingId = id || null;
+  var c = id ? findCard(id) : {};
+  document.getElementById("formTitle").textContent = id ? "编辑构想" : "新的主题构想";
+  document.getElementById("formSub").textContent = id ? "最后由 " + (c.lastEditor||c.author||"") + " 修改于 " + fmtTime(c.updateAt) : "当前身份：" + (state.me || "未选择（默认吴宣澄）");
+  document.getElementById("f-title").value = c.title || "";
+  document.getElementById("f-phen").value = c.phen || "";
+  document.getElementById("f-premise").value = c.premise || "";
+  document.getElementById("f-method").value = c.method || "";
+  document.getElementById("f-case").value = c.case_ || "";
+  document.getElementById("f-gov").value = c.gov || "";
+  document.getElementById("formModal").classList.add("show");
+}
+function editCard(id){ openForm(id); }
+function closeForm(){ document.getElementById("formModal").classList.remove("show"); }
+
+function openExport(){
+  var lines = [];
+  PEOPLE.forEach(function(p){
+    var mine = state.cards.filter(function(c){ return c.author === p; });
+    if (!mine.length) return;
+    lines.push("【" + p + "】(" + mine.length + "条)");
+    mine.forEach(function(c, i){
+      lines.push((i+1) + ". " + c.title);
+      FIELD_LABELS.forEach(function(f){ if (c[f[0]]) lines.push("   " + f[1] + "：" + c[f[0]]); });
+    });
+    lines.push("");
+  });
+  document.getElementById("exportCount").textContent = "共 " + state.cards.length + " 条构想";
+  document.getElementById("exportBox").value = lines.join("\n") || "（暂无内容）";
+  document.getElementById("exportModal").classList.add("show");
+}
+function closeExport(){ document.getElementById("exportModal").classList.remove("show"); }
+function copyExport(){
+  var box = document.getElementById("exportBox");
+  box.select();
+  if (navigator.clipboard) navigator.clipboard.writeText(box.value).then(function(){ toast("已复制", "ok"); });
+  else { document.execCommand("copy"); toast("已复制", "ok"); }
+}
+
+function toast(msg, cls){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.className = "toast show " + (cls||"");
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.className = "toast " + (cls||""); }, 2600);
+}
+
+/* ================= 启动 ================= */
+if (!PEOPLE.includes(state.me)) state.me = "";
+loadData();
+state.timer = setInterval(function(){ if (document.visibilityState === "visible") loadData(); }, 10000);
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) loadData(); });
+</script>
+</body>
+</html>
