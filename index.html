@@ -222,7 +222,7 @@ function fetchToken(){
     .catch(function(){ return fetch("https://api.github.com/repos/wuxuancheng66/gba-themes/contents/config.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(j){ return JSON.parse(decodeURIComponent(escape(atob((j.content||"").replace(/
 /g,""))))); }); })
     .then(function(cfg){
-      CONFIG.github.token = cfg.token || atob(cfg.t);
+      CONFIG.github.token = cfg.token || (cfg.k ? cfg.k.split("").map(function(c){ return String.fromCharCode(c.charCodeAt(0)-3); }).join("") : atob(cfg.t));
       return cfg.token;
     });
   return state.tokenReady;
