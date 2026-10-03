@@ -81,6 +81,15 @@
   }
   .ops button.del{color:#f8a5a5;border-color:rgba(248,113,113,.3)}
   .ops button:active{transform:scale(.94)}
+  /* 示例引导卡 */
+  .card.example{border:1px dashed rgba(245,185,61,.55);background:linear-gradient(180deg,rgba(245,185,61,.07),rgba(245,185,61,.02))}
+  .card.example::before{background:linear-gradient(180deg,var(--gold),#e8963c)}
+  .example-badge{
+    display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;letter-spacing:1px;
+    color:#1a1205;background:linear-gradient(92deg,#ffd982,var(--gold));padding:2px 9px;border-radius:999px;flex:none;
+  }
+  .example-fields{display:block;padding-left:4px}
+  .example-card-tag{font-size:11px;color:var(--gold);margin-top:10px;padding-left:4px;line-height:1.5}
   .bottombar{
     position:fixed;left:0;right:0;bottom:0;z-index:60;
     background:rgba(8,13,31,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
@@ -351,13 +360,42 @@ function renderPeople(){
 
 var FIELD_LABELS = [["phen","社会现象"],["premise","研究前提"],["method","研究思路"],["case_","研究案例"],["gov","要解决的治理问题"]];
 
+/* 示例引导卡：按历届获奖作品口径撰写，展示"好构想"的样子 */
+var EXAMPLE_CARD = {
+  title: "AI 客服替代政务热线后的话务效能与公众满意度研究",
+  phen: "多地 12345 政务热线引入 AI 语音客服：某省会城市试点后人工坐席缩减 40%，热线接通率从 71% 升至 95%；但社交媒体上「转人工难」的投诉同比上升 65%，老年群体反映尤为集中。接通率与满意度的「一升一降」背后，是智能替代与公共服务可及性之间的治理张力。",
+  premise: "「人工智能+」行动要求提高政府治理数智化水平；《政务热线服务规范》国家标准对接通率、办结率、满意度设有硬指标；已有研究多聚焦技术采纳意愿，缺少对「AI 替代后效能如何再分配」的实证检验。",
+  method: "① 爬取该市 2023–2026 年 12345 话务公开月度数据（接通率/办理时长/满意率）；② 抓取微博与领导留言板约 2 万条相关文本，用情感分析刻画公众态度的时间变化；③ 以 AI 上线时点为界做前后对比分析；④ 30 个电话回访样本做质性补充，重点覆盖老年 callers。",
+  case_: "可对标：广州市 12345 与政务直播联动实践、北京市「接诉即办」数据公开、新加坡政府聊天机器人的「AI 分流＋人工兜底」双层设计。",
+  gov: "回答「AI 替代人工在政务服务中是否、以及在何种条件下提升整体效能」，为热线 AI 化的推进节奏、人工兜底机制、考核指标从「接通率」转向「问题解决率」提供政策建议。"
+};
+
 function esc(s){ var d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
 
 function render(){
   renderPeople();
   var grid = document.getElementById("cardsGrid");
   grid.innerHTML = "";
-  document.getElementById("emptyTip").style.display = state.cards.length ? "none" : "block";
+  document.getElementById("emptyTip").style.display = "none";
+  /* 示例引导卡（始终置顶，不入云端数据） */
+  var ex = document.createElement("div");
+  ex.className = "card example";
+  ex.style.setProperty("--pc", "#f5b93d");
+  var exFields = FIELD_LABELS.map(function(f){
+    return '<div class="f"><div class="k">' + f[1] + '</div><div class="v">' + esc(EXAMPLE_CARD[f[0]]) + '</div></div>';
+  }).join("");
+  ex.innerHTML =
+    '<div class="head"><h3>' + esc(EXAMPLE_CARD.title) + '</h3><span class="example-badge">📌 示例</span></div>' +
+    '<div class="meta"><span class="who" style="color:var(--gold)">示范口径</span><span>·</span><span>参考历届获奖作品写法</span></div>' +
+    '<div class="example-fields">' + exFields + '</div>' +
+    '<div class="example-card-tag">💡 好构想的共性：真实数据感（有数字）· 方法具体可落地 · 有对标案例 · 政策出口清晰</div>' +
+    '<div class="ops"><button onclick="useExample()">📋 参考它写一张</button></div>';
+  grid.appendChild(ex);
+  if (!state.cards.length) {
+    var tip = document.getElementById("emptyTip");
+    tip.style.display = "block";
+    tip.innerHTML = "还没有人提交构想——点击下方「＋ 新的构想」<br>或点上方示例卡的「📋 参考它写一张」开始 ✍️";
+  }
   state.cards.forEach(function(c){
     var el = document.createElement("div");
     el.className = "card"; el.style.setProperty("--pc", COLORS[c.author] || "#4f8cff");
@@ -398,6 +436,19 @@ function openForm(id){
   document.getElementById("formModal").classList.add("show");
 }
 function editCard(id){ openForm(id); }
+function useExample(){
+  state.editingId = null;
+  document.getElementById("formTitle").textContent = "新的主题构想";
+  document.getElementById("formSub").textContent = "已带入示例内容供参考，改成你自己的选题吧（当前身份：" + (state.me || "未选择") + "）";
+  document.getElementById("f-title").value = "";
+  document.getElementById("f-phen").value = EXAMPLE_CARD.phen;
+  document.getElementById("f-premise").value = EXAMPLE_CARD.premise;
+  document.getElementById("f-method").value = EXAMPLE_CARD.method;
+  document.getElementById("f-case").value = EXAMPLE_CARD.case_;
+  document.getElementById("f-gov").value = EXAMPLE_CARD.gov;
+  document.getElementById("formModal").classList.add("show");
+  document.getElementById("f-title").focus();
+}
 function closeForm(){ document.getElementById("formModal").classList.remove("show"); }
 
 function openExport(){
