@@ -207,23 +207,34 @@
 /* ================= 配置 ================= */
 var CONFIG = {
   backend: "github",              // "github" 或 "gitee"
-  github: { owner:"wuxuancheng66", repo:"gba-themes",  branch:"main",  token:"__TOKEN__", api:"https://api.github.com" },
+  github: { owner:"wuxuancheng66", repo:"gba-themes",  branch:"main",  token:"", api:"https://api.github.com" },
   gitee:  { owner:"wuxuancheng66", repo:"gba-themes",  branch:"master", token:"",          api:"https://gitee.com/api/v5" }
 };
 var PEOPLE = ["吴宣澄","马云启","王子恒","朱鑫林","庄竞泽"];
 var COLORS = {"吴宣澄":"#4f8cff","马云启":"#34d399","王子恒":"#f5b93d","朱鑫林":"#f472b6","庄竞泽":"#8b5cf6"};
 
-var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null };
+var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null, tokenReady: null };
+/* 启动时从数据仓 config.json 获取专用令牌（双通道容错） */
+function fetchToken(){
+  if (state.tokenReady) return state.tokenReady;
+  state.tokenReady = fetch("https://cdn.jsdelivr.net/gh/wuxuancheng66/gba-themes@main/config.json?t=" + Date.now())
+    .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    .catch(function(){ return fetch("https://api.github.com/repos/wuxuancheng66/gba-themes/contents/config.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(j){ return JSON.parse(decodeURIComponent(escape(atob((j.content||"").replace(/
+/g,""))))); }); })
+    .then(function(cfg){
+      CONFIG.github.token = cfg.token;
+      return cfg.token;
+    });
+  return state.tokenReady;
+}
 
 /* ================= 后端适配 ================= */
 function backend(){ return CONFIG[CONFIG.backend]; }
 
 function apiRead(){
   var b = backend();
-  return fetch(b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now(), {
-    headers: CONFIG.backend === "github" ? { "Authorization":"token " + b.token, "Accept":"application/vnd.github+json" } : {},
-    cache: "no-store"
-  }).then(function(r){
+  return fetchToken().then(function(){ return fetch(b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now(), {
+    { headers: CONFIG.backend === "github" ? { "Authorization":"token " + b.token, "Accept":"application/vnd.github+json" } : {}, cache: "no-store" } ).then(function(r){
     if (r.status === 404) return { json: {cards:[]}, sha: null };
     if (!r.ok) throw new Error("读取失败 HTTP " + r.status);
     return r.json().then(function(j){
@@ -234,6 +245,10 @@ function apiRead(){
 }
 
 function apiWrite(cards, sha){
+  var b = backend();
+  return fetchToken().then(function(){ return apiWriteInner(cards, sha); });
+}
+function apiWriteInner(cards, sha){
   var b = backend();
   var content = btoa(unescape(encodeURIComponent(JSON.stringify({cards:cards}, null, 1))));
   var body = { message: "更新主题构想 " + new Date().toLocaleString("zh-CN"), content: content, branch: b.branch };
@@ -290,7 +305,7 @@ function saveCard(){
   var btn = document.getElementById("saveBtn");
   btn.disabled = true; btn.textContent = "保存中…";
 
-  apiRead().then(function(res){
+  fetchToken().then(function(){ return apiRead(); }).then(function(res){
     var remote = (res.json.cards || []);
     var merged = remote.filter(function(c){ return c.id !== card.id; });
     merged.push(card);
