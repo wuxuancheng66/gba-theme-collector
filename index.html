@@ -584,6 +584,16 @@ function restoreVersion(){
 
 function useExample(){
   state.editingId = null;
+  /* 构建归属下拉（与 openForm 一致），默认当前身份 */
+  var sel = document.getElementById("f-author");
+  sel.innerHTML = "";
+  PEOPLE.forEach(function(p){
+    var opt = document.createElement("option");
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  var def = state.me || PEOPLE[0];
+  sel.value = PEOPLE.includes(def) ? def : PEOPLE[0];
   document.getElementById("formTitle").textContent = "新的主题构想";
   document.getElementById("formSub").textContent = "已带入示例内容供参考，改成你自己的选题吧（当前身份：" + (state.me || "未选择") + "）";
   document.getElementById("f-title").value = "";
