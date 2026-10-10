@@ -232,7 +232,7 @@ var CONFIG = {
 var PEOPLE = ["吴宣澄","马云启","王子恒","朱鑫林","庄竞泽"];
 var COLORS = {"吴宣澄":"#4f8cff","马云启":"#34d399","王子恒":"#f5b93d","朱鑫林":"#f472b6","庄竞泽":"#8b5cf6"};
 
-var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null, tokenReady: null };
+var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null, tokenReady: null, openIds: {}, lastRenderedSha: null };
 
 /* 启动时从数据仓 config.json 获取专用令牌（jsDelivr 主通道 + API 备通道） */
 function fetchToken(){
@@ -308,14 +308,26 @@ function loadData(showToast){
   setDot("off");
   return apiRead().then(function(res){
     state.cards = (res.json.cards || []).sort(function(a, b){ return (b.updateAt || "").localeCompare(a.updateAt || ""); });
+    var changed = state.sha !== res.sha;
     state.sha = res.sha;
     setDot("");
-    render();
+    /* 数据有变化才重渲染，避免轮询把展开状态刷掉 */
+    if (changed || state.lastRenderedSha === null) {
+      render();
+      state.lastRenderedSha = res.sha;
+    }
     if (showToast) toast("已同步 · 共 " + state.cards.length + " 条", "ok");
   }).catch(function(e){
     setDot("err");
     if (showToast) toast("⚠️ " + e.message, "err");
   });
+}
+
+function toggleCard(id){
+  if (state.openIds[id]) delete state.openIds[id];
+  else state.openIds[id] = 1;
+  var el = document.querySelector('.card[data-id="' + id + '"]');
+  if (el) el.classList.toggle("open");
 }
 
 function saveCard(){
@@ -447,7 +459,9 @@ function render(){
   }
   state.cards.forEach(function(c){
     var el = document.createElement("div");
-    el.className = "card"; el.style.setProperty("--pc", COLORS[c.author] || "#4f8cff");
+    el.className = "card" + (state.openIds[c.id] ? " open" : "");
+    el.setAttribute("data-id", c.id);
+    el.style.setProperty("--pc", COLORS[c.author] || "#4f8cff");
     var fieldsHtml = FIELD_LABELS.map(function(f){
       if (!c[f[0]]) return "";
       return '<div class="f"><div class="k">' + f[1] + '</div><div class="v">' + esc(c[f[0]]) + '</div></div>';
@@ -458,7 +472,7 @@ function render(){
       '<div class="meta"><span class="who">' + esc(c.author) + '</span><span>·</span><span>' + fmtTime(c.updateAt) + '更新' +
       (c.lastEditor && c.lastEditor !== c.author ? '（' + esc(c.lastEditor) + '改）' : '') + '</span></div>' +
       '<div class="fields">' + fieldsHtml + '</div>' +
-      (hasMore ? '<div class="toggle" onclick="this.parentNode.classList.toggle(\'open\')">展开 / 收起 ▾</div>' : '') +
+      (hasMore ? '<div class="toggle" onclick="toggleCard(\'' + c.id + '\')">展开 / 收起 ▾</div>' : '') +
       '<div class="ops"><button onclick="editCard(\'' + c.id + '\')">✏️ 编辑</button><button onclick="showHistory(\'' + c.id + '\')">🕓 历史' + ((c.history && c.history.length) ? '(' + c.history.length + ')' : '') + '</button><button class="del" onclick="delCard(\'' + c.id + '\')">🗑 删除</button></div>';
     grid.appendChild(el);
   });
