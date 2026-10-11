@@ -136,6 +136,8 @@
   .toast.ok{border-color:rgba(52,211,153,.5)}
   .toast.err{border-color:rgba(248,113,113,.5)}
   .export-box{width:100%;height:56vh;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;color:#d5ddf3;font-size:12.5px;padding:12px;font-family:inherit;outline:none;white-space:pre-wrap}
+  :focus-visible{outline:3px solid #93c5fd;outline-offset:3px}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
@@ -144,15 +146,17 @@
   <div class="top-row">
     <div class="logo">
       <span class="grad">📊 主题构想收集器</span>
-      <small>筑工杯第六届 · 五人共创 · 自动同步</small>
+      <small>筑工杯备赛 · 构想、讨论与版本记录</small>
     </div>
     <span class="sync-dot" id="syncDot" title="同步状态"></span>
     <button class="btn-refresh" onclick="loadData(true)">刷新</button>
+    <button class="btn-refresh" id="connectBtn" onclick="openConnect()">连接协作</button>
   </div>
   <div class="people" id="peopleBar"></div>
 </header>
 
 <main>
+  <p id="modeNote" style="max-width:1100px;margin:0 auto 18px;color:var(--muted);font-size:13px" role="status"></p>
   <div class="grid" id="cardsGrid"></div>
   <div class="empty" id="emptyTip" style="display:none">
     还没有任何构想——点击下方「+ 新的构想」<br>写下第一个主题灵感 ✍️
@@ -221,81 +225,85 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-labelledby="connectTitle">
+  <div class="sheet">
+    <h3 id="connectTitle">连接协作</h3>
+    <p class="sub">显示名用于标记编辑者。GitHub 访问令牌仅保存在本页内存中，关闭或刷新后清除；只发送到 api.github.com。使用只对目标数据仓库开放 Contents 读写权限的令牌，不要填入他人的令牌。</p>
+    <div class="fg"><label for="connectName">显示名</label><input id="connectName" maxlength="30" autocomplete="off" placeholder="你的称呼"></div>
+    <div class="fg"><label for="connectToken">GitHub 访问令牌</label><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="仅需编辑云端时填写"></div>
+    <div class="sheet-actions"><button class="sa-cancel" onclick="closeConnect()">取消</button><button class="sa-cancel" onclick="disconnect()">断开连接</button><button class="sa-save" onclick="connectSession()">连接</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 /* ================= 配置 ================= */
 var CONFIG = {
-  backend: "github",
-  github: { owner:"wuxuancheng66", repo:"gba-themes", branch:"main", token:"", api:"https://api.github.com" }
+  github: { owner:"wuxuancheng66", repo:"gba-themes", branch:"main", token:"" }
 };
-var PEOPLE = ["吴宣澄","马云启","王子恒","朱鑫林","庄竞泽"];
-var COLORS = {"吴宣澄":"#4f8cff","马云启":"#34d399","王子恒":"#f5b93d","朱鑫林":"#f472b6","庄竞泽":"#8b5cf6"};
+var DEMO = new URLSearchParams(location.search).get("demo") === "1";
+var PEOPLE = DEMO ? ["成员一", "成员二", "成员三"] : [];
+var identityKey = DEMO ? "gba-demo-me" : "me";
+var COLORS = {};
 
-var state = { me: localStorage.getItem("me") || "", cards: [], sha: null, editingId: null, timer: null, tokenReady: null, openIds: {}, lastRenderedSha: null };
+var state = { me: localStorage.getItem(identityKey) || (DEMO ? "成员一" : ""), cards: [], sha: null, editingId: null, timer: null, openIds: {}, lastRenderedSha: null };
 
-/* 启动时从数据仓 config.json 获取专用令牌（jsDelivr 主通道 + API 备通道） */
-function fetchToken(){
-  if (state.tokenReady) return state.tokenReady;
-  state.tokenReady = fetch("https://cdn.jsdelivr.net/gh/wuxuancheng66/gba-themes@main/config.json?t=" + Date.now())
-    .then(function(r){ if (!r.ok) throw new Error("cdn"); return r.json(); })
-    .catch(function(){
-      return fetch("https://api.github.com/repos/wuxuancheng66/gba-themes/contents/config.json?t=" + Date.now())
-        .then(function(r){ return r.json(); })
-        .then(function(j){
-          var txt = decodeURIComponent(escape(atob((j.content || "").replace(/\n/g, ""))));
-          return JSON.parse(txt);
-        });
-    })
-    .then(function(cfg){
-      if (cfg.k) {
-        CONFIG.github.token = cfg.k.split("").map(function(c){ return String.fromCharCode(c.charCodeAt(0) - 3); }).join("");
-      } else if (cfg.t) {
-        CONFIG.github.token = atob(cfg.t);
-      } else {
-        CONFIG.github.token = cfg.token;
-      }
-      return CONFIG.github.token;
-    });
-  return state.tokenReady;
+/* 公开阅读不需要凭据；编辑凭据由用户主动输入，仅存在本页内存。 */
+var demoCards = [{id:"demo-access",title:"让社区服务更容易找到",phen:"居民需要在多个入口查找办事信息。",premise:"使用公开、匿名的服务目录进行研究。",method:"比较检索路径与完成任务所需的步骤。",case_:"示例社区服务目录",gov:"降低信息获取成本",author:"成员一",lastEditor:"成员一",createAt:"2026-10-01T00:00:00Z",updateAt:"2026-10-01T00:00:00Z",history:[]}];
+var demoRevision = 0;
+function apiHeaders(){
+  var h = {"Accept":"application/vnd.github+json"};
+  if (CONFIG.github.token) h.Authorization = "Bearer " + CONFIG.github.token;
+  return h;
 }
-
-/* ================= 后端适配 ================= */
-function backend(){ return CONFIG[CONFIG.backend]; }
-
+function dataUrl(){
+  return "https://api.github.com/repos/" + CONFIG.github.owner + "/" + CONFIG.github.repo + "/contents/data.json";
+}
 function apiRead(){
-  var b = backend();
-  return fetchToken().then(function(){
-    var url = b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json?ref=" + b.branch + "&t=" + Date.now();
-    var headers = { "Authorization": "token " + b.token, "Accept": "application/vnd.github+json" };
-    return fetch(url, { headers: headers, cache: "no-store" });
-  }).then(function(r){
-    if (r.status === 404) return { json: { cards: [] }, sha: null };
+  if (DEMO) return Promise.resolve({json:{cards:JSON.parse(JSON.stringify(demoCards))},sha:"demo-"+demoRevision});
+  return fetch(dataUrl() + "?ref=" + CONFIG.github.branch + "&t=" + Date.now(), {headers:apiHeaders(),cache:"no-store"}).then(function(r){
+    if (r.status === 404) return {json:{cards:[]},sha:null};
     if (!r.ok) throw new Error("读取失败 HTTP " + r.status);
     return r.json().then(function(j){
       var txt = decodeURIComponent(escape(atob((j.content || "").replace(/\n/g, ""))));
-      return { json: JSON.parse(txt || '{"cards":[]}'), sha: j.sha };
+      return {json:JSON.parse(txt || '{"cards":[]}'),sha:j.sha};
     });
   });
 }
-
-function apiWrite(cards, sha){
-  return fetchToken().then(function(){
-    var b = backend();
-    var content = btoa(unescape(encodeURIComponent(JSON.stringify({ cards: cards }, null, 1))));
-    var body = { message: "更新主题构想 " + new Date().toLocaleString("zh-CN"), content: content, branch: b.branch };
-    if (sha) body.sha = sha;
-    var url = b.api + "/repos/" + b.owner + "/" + b.repo + "/contents/data.json";
-    var opts = {
-      method: "PUT",
-      headers: { "Authorization": "token " + b.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    };
-    return fetch(url, opts).then(function(r){
-      if (!r.ok) throw new Error("保存失败 HTTP " + r.status);
-      return r.json();
-    });
+function apiWrite(cards,sha){
+  if (DEMO) {demoCards=JSON.parse(JSON.stringify(cards));demoRevision++;return Promise.resolve({});}
+  if (!CONFIG.github.token) {openConnect();return Promise.reject(new Error("请先连接自己的 GitHub 账号后再保存"));}
+  var headers=apiHeaders();headers["Content-Type"]="application/json";
+  var body={message:"更新主题构想",content:btoa(unescape(encodeURIComponent(JSON.stringify({cards:cards},null,1)))),branch:CONFIG.github.branch};
+  if (sha) body.sha=sha;
+  return fetch(dataUrl(),{method:"PUT",headers:headers,body:JSON.stringify(body)}).then(function(r){
+    if (r.status===409) throw new Error("有其他成员刚刚更新了内容，请刷新后重试；当前输入已保留");
+    if (!r.ok) throw new Error("保存失败 HTTP "+r.status);
+    return r.json();
   });
+}
+function openConnect(){
+  if (DEMO) {toast("演示内容只在本页生效，无需连接", "ok");return;}
+  document.getElementById("connectName").value=state.me;
+  document.getElementById("connectModal").classList.add("show");
+}
+function closeConnect(){
+  document.getElementById("connectToken").value="";
+  document.getElementById("connectModal").classList.remove("show");
+}
+function connectSession(){
+  var name=document.getElementById("connectName").value.trim();
+  if (!name) {toast("请填写显示名", "err");return;}
+  state.me=name;localStorage.setItem(identityKey,name);
+  CONFIG.github.token=document.getElementById("connectToken").value.trim();
+  if (!PEOPLE.includes(name)) PEOPLE.push(name);
+  closeConnect();renderPeople();updateMode();loadData(true);
+}
+function disconnect(){CONFIG.github.token="";closeConnect();updateMode();toast("已清除本页连接凭据", "ok");}
+function updateMode(){
+  document.getElementById("modeNote").textContent=DEMO ? "演示模式 · 使用虚构内容，修改仅在本页生效，刷新后重置。" : (CONFIG.github.token ? "编辑凭据已填写 · 权限以 GitHub 响应为准，刷新后清除。" : "公开阅读 · 编辑时请连接自己的 GitHub 账号。显示名不代表身份认证。 ");
+  document.getElementById("connectBtn").textContent=DEMO ? "演示模式" : (CONFIG.github.token ? "连接设置" : "连接协作");
+  document.getElementById("saveBtn").textContent=DEMO ? "保存演示" : "保存到云端";
 }
 
 /* ================= 数据加载 ================= */
@@ -307,9 +315,14 @@ function setDot(cls){
 function loadData(showToast){
   setDot("off");
   return apiRead().then(function(res){
-    state.cards = (res.json.cards || []).sort(function(a, b){ return (b.updateAt || "").localeCompare(a.updateAt || ""); });
+    state.cards = (res.json.cards || []).filter(function(card){
+      return card && typeof card.id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(card.id);
+    }).sort(function(a, b){ return (b.updateAt || "").localeCompare(a.updateAt || ""); });
     var changed = state.sha !== res.sha;
     state.sha = res.sha;
+    if (!DEMO) {
+      PEOPLE = Array.from(new Set([state.me].concat(state.cards.flatMap(function(c){return [c.author,c.lastEditor];})).filter(function(n){return typeof n === "string" && n.trim();})));
+    }
     setDot("");
     /* 数据有变化才重渲染，避免轮询把展开状态刷掉 */
     if (changed || state.lastRenderedSha === null) {
@@ -331,9 +344,10 @@ function toggleCard(id){
 }
 
 function saveCard(){
+  if (!DEMO && (!CONFIG.github.token || !state.me)) {openConnect();toast("请先连接自己的账号并填写显示名", "err");return;}
   var title = document.getElementById("f-title").value.trim();
   if (!title) { toast("主题名必填", "err"); return; }
-  var me = state.me || "吴宣澄";
+  var me = state.me || "成员";
   var now = new Date().toISOString();
   var old = state.editingId ? findCard(state.editingId) : null;
   var newAuthor = document.getElementById("f-author").value || (old ? old.author : me);
@@ -379,16 +393,17 @@ function saveCard(){
     return apiWrite(merged, res.sha);
   }).then(function(){
     closeForm();
-    toast("✅ 已保存，其他人 10 秒内可见", "ok");
+    toast(DEMO ? "演示已保存，仅本页可见" : "已保存，其他成员将在同步后看到", "ok");
     return loadData();
   }).catch(function(e){
     toast("⚠️ " + e.message + "（可稍后重试）", "err");
   }).finally(function(){
-    btn.disabled = false; btn.textContent = "保存到云端";
+    btn.disabled = false; updateMode();
   });
 }
 
 function delCard(id){
+  if (!DEMO && !CONFIG.github.token) {openConnect();toast("请先连接自己的账号", "err");return;}
   var c = findCard(id);
   if (!confirm("删除「" + c.title + "」？此操作不可恢复")) return;
   apiRead().then(function(res){
@@ -409,11 +424,14 @@ function renderPeople(){
   bar.innerHTML = "";
   PEOPLE.forEach(function(p){
     var n = state.cards.filter(function(c){ return c.author === p; }).length;
-    var el = document.createElement("div");
+    var el = document.createElement("button");
+    el.type = "button";
+    el.setAttribute("aria-pressed", String(state.me === p));
+    el.style.cssText = "font:inherit;color:inherit;text-align:left";
     el.className = "person" + (state.me === p ? " sel" : "");
-    el.innerHTML = '<div class="av" style="background:' + COLORS[p] + '">' + p[1] + '</div><div class="nm">' + p + '</div><div class="ct">' + n + '</div>';
+    el.innerHTML = '<div class="av" style="background:' + (COLORS[p] || "#4f8cff") + '">' + esc(p.slice(0, 1)) + '</div><div class="nm">' + esc(p) + '</div><div class="ct">' + n + '</div>';
     el.onclick = function(){
-      state.me = p; localStorage.setItem("me", p); renderPeople(); toast("当前身份：" + p, "ok");
+      state.me = p; localStorage.setItem(identityKey, p); renderPeople(); toast("当前身份：" + p, "ok");
     };
     bar.appendChild(el);
   });
@@ -423,12 +441,12 @@ var FIELD_LABELS = [["phen","社会现象"],["premise","研究前提"],["method"
 
 /* 示例引导卡：按历届获奖作品口径撰写，展示"好构想"的样子 */
 var EXAMPLE_CARD = {
-  title: "AI 客服替代政务热线后的话务效能与公众满意度研究",
-  phen: "多地 12345 政务热线引入 AI 语音客服：某省会城市试点后人工坐席缩减 40%，热线接通率从 71% 升至 95%；但社交媒体上「转人工难」的投诉同比上升 65%，老年群体反映尤为集中。接通率与满意度的「一升一降」背后，是智能替代与公共服务可及性之间的治理张力。",
-  premise: "「人工智能+」行动要求提高政府治理数智化水平；《政务热线服务规范》国家标准对接通率、办结率、满意度设有硬指标；已有研究多聚焦技术采纳意愿，缺少对「AI 替代后效能如何再分配」的实证检验。",
-  method: "① 爬取该市 2023–2026 年 12345 话务公开月度数据（接通率/办理时长/满意率）；② 抓取微博与领导留言板约 2 万条相关文本，用情感分析刻画公众态度的时间变化；③ 以 AI 上线时点为界做前后对比分析；④ 30 个电话回访样本做质性补充，重点覆盖老年 callers。",
-  case_: "可对标：广州市 12345 与政务直播联动实践、北京市「接诉即办」数据公开、新加坡政府聊天机器人的「AI 分流＋人工兜底」双层设计。",
-  gov: "回答「AI 替代人工在政务服务中是否、以及在何种条件下提升整体效能」，为热线 AI 化的推进节奏、人工兜底机制、考核指标从「接通率」转向「问题解决率」提供政策建议。"
+  title: "政务服务入口的可及性研究（虚构示例）",
+  phen: "居民可能需要在多个入口查找同一项服务。请用有出处的真实观察替换这段示例，不将示例当作研究结论。",
+  premise: "先核验当地服务目录、相关政策与已有研究，记录来源和日期。",
+  method: "使用公开服务目录，比较检索路径与完成任务所需步骤；涉及访谈时另行取得知情同意。",
+  case_: "选择有公开资料的城市或服务项目，说明选择依据。",
+  gov: "如何降低信息获取成本，并让不同群体更容易找到服务？"
 };
 
 function esc(s){ var d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
@@ -499,7 +517,7 @@ function openForm(id){
   var author = c.author || state.me || PEOPLE[0];
   sel.value = PEOPLE.includes(author) ? author : PEOPLE[0];
   document.getElementById("formTitle").textContent = id ? "编辑构想" : "新的主题构想";
-  document.getElementById("formSub").textContent = id ? "最后由 " + (c.lastEditor || c.author || "") + " 修改于 " + fmtTime(c.updateAt) + "（可继续优化，旧版本自动存档）" : "当前身份：" + (state.me || "未选择（默认吴宣澄）");
+  document.getElementById("formSub").textContent = id ? "最后由 " + (c.lastEditor || c.author || "") + " 修改于 " + fmtTime(c.updateAt) + "（可继续优化，旧版本自动存档）" : "当前身份：" + (state.me || "未选择（保存前请设置显示名）");
   document.getElementById("f-title").value = c.title || "";
   document.getElementById("f-phen").value = c.phen || "";
   document.getElementById("f-premise").value = c.premise || "";
@@ -555,9 +573,10 @@ function showVersion(i){
 }
 
 function restoreVersion(){
+  if (!DEMO && !CONFIG.github.token) {openConnect();toast("请先连接自己的账号", "err");return;}
   if (!restoreTarget) return;
   var t = restoreTarget;
-  var me = state.me || "吴宣澄";
+  var me = state.me || "成员";
   var now = new Date().toISOString();
   var btn = document.getElementById("restoreBtn");
   btn.disabled = true; btn.textContent = "恢复中…";
@@ -627,8 +646,13 @@ function closeExport(){ document.getElementById("exportModal").classList.remove(
 function copyExport(){
   var box = document.getElementById("exportBox");
   box.select();
-  if (navigator.clipboard) navigator.clipboard.writeText(box.value).then(function(){ toast("已复制", "ok"); });
-  else { document.execCommand("copy"); toast("已复制", "ok"); }
+  function fallback(){
+    box.focus();box.select();
+    try {if(document.execCommand("copy")){toast("已复制", "ok");return;}} catch(e) {}
+    toast("自动复制不可用，全文已选中，请手动复制", "err");
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(function(){toast("已复制", "ok");}).catch(fallback);
+  else fallback();
 }
 
 function toast(msg, cls){
@@ -638,10 +662,32 @@ function toast(msg, cls){
 }
 
 /* ================= 启动 ================= */
-if (!PEOPLE.includes(state.me)) state.me = "";
+updateMode();
 loadData();
-state.timer = setInterval(function(){ if (document.visibilityState === "visible") loadData(); }, 10000);
-document.addEventListener("visibilitychange", function(){ if (!document.hidden) loadData(); });
+if (!DEMO) state.timer = setInterval(function(){ if (document.visibilityState === "visible") loadData(); }, 10000);
+document.addEventListener("visibilitychange", function(){ if (!DEMO && !document.hidden) loadData(); });
+/* 弹窗支持键盘导航，并在关闭后返回原入口。 */
+var previousFocus=new WeakMap();
+document.querySelectorAll(".modal").forEach(function(modal){
+  modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");modal.setAttribute("aria-label",modal.querySelector("h3").textContent);
+  modal.setAttribute("aria-hidden", "true");
+  new MutationObserver(function(){
+    var open=modal.classList.contains("show");modal.setAttribute("aria-hidden",String(!open));
+    if(open){previousFocus.set(modal,document.activeElement);var first=modal.querySelector("input,textarea,select,button");if(first)first.focus();}
+    else {var prev=previousFocus.get(modal);if(prev&&prev.isConnected)prev.focus();}
+  }).observe(modal,{attributes:true,attributeFilter:["class"]});
+});
+document.addEventListener("keydown",function(e){
+  var visible=Array.from(document.querySelectorAll(".modal.show"));var modal=visible[visible.length-1];if(!modal)return;
+  if(e.key==="Escape"){e.preventDefault();if(modal.id==="connectModal")closeConnect();else modal.classList.remove("show");}
+  if(e.key==="Tab"){
+    var focusable=Array.from(modal.querySelectorAll("button,input,textarea,select,a[href]")).filter(function(el){return !el.disabled;});
+    var first=focusable[0],last=focusable[focusable.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  }
+});
+document.querySelectorAll(".fg").forEach(function(group){var label=group.querySelector("label"),input=group.querySelector("input,textarea,select");if(label&&input)label.htmlFor=input.id;});
 </script>
 </body>
 </html>
